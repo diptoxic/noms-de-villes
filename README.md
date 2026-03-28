@@ -52,4 +52,4 @@ Retourne un tableau JSON de communes :
 
 ## Auteur
 
-Amine Chebil — M1 IGAST
+Amine Chebil — M1 
