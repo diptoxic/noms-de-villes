@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Noms de Villes 🗺️</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; display: flex; height: 100vh; }
+        #sidebar {
+            width: 300px;
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+        }
+        h1 { font-size: 1.2em; color: #3498db; }
+        label { font-size: 0.85em; color: #bdc3c7; }
+        select, input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border-radius: 5px;
+            border: none;
+            margin-top: 4px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .btn-search { background: #3498db; color: white; }
+        .btn-search:hover { background: #2980b9; }
+        .btn-preset { background: #27ae60; color: white; margin-top: 3px; font-size: 0.9em; }
+        .btn-preset:hover { background: #219a52; }
+        .btn-bary { background: #e67e22; color: white; }
+        .btn-bary:hover { background: #d35400; }
+        hr { border-color: #3d5166; }
+        #count { font-size: 0.9em; color: #bdc3c7; }
+        .bary-info {
+            background: #34495e;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 0.85em;
+            color: #ecf0f1;
+        }
+        #map { flex: 1; }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <div id="sidebar">
+        <h1>🗺️ Noms de Villes</h1>
+
+        <div>
+            <label>Type de recherche</label>
+            <select v-model="type">
+                <option value="starts">Commence par</option>
+                <option value="ends">Se termine par</option>
+                <option value="contains">Contient</option>
+            </select>
+        </div>
+
+        <div>
+            <label>Lettres</label>
+            <input type="text" v-model="query" placeholder="Ex: plou, heim, ac..."
+                   @keyup.enter="rechercher"/>
+        </div>
+
+        <button class="btn-search" @click="rechercher">🔍 Rechercher</button>
+
+        <hr>
+        <p style="color:#bdc3c7; font-size:0.85em">Recherches prédéfinies :</p>
+        <button class="btn-preset" @click="preset('starts', 'k')">🔤 Commence par K</button>
+        <button class="btn-preset" @click="preset('starts', 'plou')">🔤 Commence par Plou</button>
+        <button class="btn-preset" @click="preset('ends', 'heim')">🔤 Finit par heim</button>
+        <button class="btn-preset" @click="preset('ends', 'ac')">🔤 Finit par ac</button>
+
+        <hr>
+        <p style="color:#bdc3c7; font-size:0.85em">⭐ Fonctionnalité : Barycentre</p>
+        <button class="btn-bary" @click="afficherBarycentre" :disabled="!barycentre">
+            📍 Afficher le barycentre
+        </button>
+
+        <div class="bary-info" v-if="barycentre">
+            <strong>Centre géographique :</strong><br>
+            Lat : {{ barycentre.lat }}<br>
+            Lon : {{ barycentre.lon }}
+        </div>
+
+        <hr>
+        <p id="count">{{ count }}</p>
+    </div>
+</div>
+
+<div id="map"></div>
+
+<script>
+    const map = L.map('map').setView([46.5, 2.5], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    let markersLayer = L.layerGroup().addTo(map);
+    let baryMarker = null;
+
+    const { createApp } = Vue;
+    createApp({
+        data() {
+            return {
+                type: 'starts',
+                query: '',
+                count: 'Aucune recherche effectuée',
+                barycentre: null
+            }
+        },
+        methods: {
+            async rechercher() {
+                if (!this.query.trim()) {
+                    alert('Veuillez entrer des lettres à rechercher.');
+                    return;
+                }
+
+                const url = `/noms-de-villes/api/villes?type=${this.type}&q=${encodeURIComponent(this.query)}`;
+                const res = await fetch(url);
+                const villes = await res.json();
+
+                // Supprimer anciens marqueurs
+                markersLayer.clearLayers();
+                if (baryMarker) {
+                    map.removeLayer(baryMarker);
+                    baryMarker = null;
+                }
+                this.barycentre = null;
+
+                if (villes.length === 0) {
+                    alert('Aucune ville trouvée !');
+                    this.count = 'Aucune ville trouvée';
+                    return;
+                }
+
+                // Ajouter marqueurs
+                villes.forEach(v => {
+                    L.circleMarker([v.lat, v.lon], {
+                        radius: 5,
+                        fillColor: '#3498db',
+                        color: '#fff',
+                        weight: 1,
+                        fillOpacity: 0.8
+                    }).bindPopup(`<b>${v.nom}</b>`).addTo(markersLayer);
+                });
+
+                // Calculer barycentre
+                const sumLat = villes.reduce((s, v) => s + v.lat, 0);
+                const sumLon = villes.reduce((s, v) => s + v.lon, 0);
+                this.barycentre = {
+                    lat: (sumLat / villes.length).toFixed(4),
+                    lon: (sumLon / villes.length).toFixed(4)
+                };
+
+                this.count = `${villes.length} ville(s) trouvée(s)`;
+            },
+
+            preset(type, q) {
+                this.type = type;
+                this.query = q;
+                this.rechercher();
+            },
+
+            afficherBarycentre() {
+                if (!this.barycentre) return;
+                if (baryMarker) map.removeLayer(baryMarker);
+
+                baryMarker = L.marker([this.barycentre.lat, this.barycentre.lon])
+                    .bindPopup(`<b>⭐ Barycentre</b><br>Lat: ${this.barycentre.lat}<br>Lon: ${this.barycentre.lon}`)
+                    .addTo(map)
+                    .openPopup();
+
+                map.setView([this.barycentre.lat, this.barycentre.lon], 6);
+            }
+        }
+    }).mount('#app');
+</script>
+
+</body>
+</html>
