@@ -26,11 +26,12 @@ Flight::route('/api/villes', function() {
     
     $stmt = $db->prepare("
         SELECT nom,
-            ST_X(ST_Centroid(geometry)) AS lon,
-            ST_Y(ST_Centroid(geometry)) AS lat
+            ST_X(ST_GeomFromText(ST_AsText(ST_Centroid(geometry)),4326)) AS lon,
+            ST_Y(ST_GeomFromText(ST_AsText(ST_Centroid(geometry)),4326)) AS lat
         FROM communes
         WHERE nom LIKE ?
-        LIMIT 500
+        ORDER BY nom
+        LIMIT 5000
     ");
     $stmt->bind_param('s', $pattern);
     $stmt->execute();
